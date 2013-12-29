@@ -15,9 +15,15 @@ probass.png, progtr.png, prokeys.png.
 the program uses icons from rb3probass.bmp. rb3progtr.bmp, rb3prokeys.bmp.
 
 requirements:
+- c compiler
 - libcurl (web stuff)
-- sdl (image stuff)
+- sdl 1.2 (image stuff)
 - imagemagick (for converting bmp to png)
+
+FUTURE WORK
+- make banner less tall by changing the logo, for instance to RB3+icon on
+  the same line
+- get input from some who's good at graphics and heed their advice
 
 i don't have plans of adding more instruments. it shouldn't be too hard if
 you're determined enough anyway.
