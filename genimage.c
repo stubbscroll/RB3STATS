@@ -3,8 +3,8 @@
 #include <SDL/SDL.h>
 #include "sdlfont.h"
 
-#define WIDTH 384 /* banner width */
-#define GAP 4     /* gap between neighbouring fields */
+#define WIDTH 392 /* banner width */
+#define GAP 3     /* gap between neighbouring fields */
 #define YSTRIDE 8 /* distance between the top of two consecutive lines */
 #define YOFFS 1   /* text starts at top of line + this offset */
 #define YSTART 15 /* y-coordinate of top of text in banner */
@@ -122,7 +122,7 @@ void genrank(char *u,int r) {
 }
 
 /* name rank/score clr 3* 4* 5* gs 100% */
-int w[]={30,110,20,20,20,20,20,20};
+int w[]={30,124,20,20,20,20,20,20};
 char header[6][10]={"CLR","3*","4*","5*","GS","100%%"};
 
 void create(char *filename) {

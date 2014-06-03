@@ -6,21 +6,24 @@
 #include <curl/easy.h>
 
 /* stuff that happens:
-	 - load score page and get score, plus count passes, 3*, 4* etc
-	 - the url is:
-		 http://rockband.scorehero.com/scores.php?user=2546&game=9&platform=2&size=1&team=0&group=25&diff=4&vox=solo
-	 - groups in url above:
-		 25 pro guitar, 26 pro bass, 28 pro keys, 27 pro drums
-		 1 guitar, 2 bass, 3 drums, 4 vocals, 24 keys
-		 also, vox=solo or vox=harmonies
-	 - platform: 2 360, 3 ps3, 4 wii
-	 - read all overall lists for all platforms:
-		 http://rockband.scorehero.com/rankings.php?game=9&platform=2&size=1&team=0&group=28&diff=4&vox=solo&page=0
-		 rb3 on-disc: song=
-		 blitz: song=-195
-		 dlc: song=-250
-	 - from these lists, calculate our rank
-	 - generate fancy image (insert logo based on instrument)
+   - load score page and get score, plus count passes, 3*, 4* etc
+   - the url is:
+     http://rockband.scorehero.com/scores.php?user=2546&game=9&platform=2&size=1&team=0&group=25&diff=4&vox=solo
+   - groups in url above:
+     25 pro guitar, 26 pro bass, 28 pro keys, 27 pro drums
+     1 guitar, 2 bass, 3 drums, 4 vocals, 24 keys
+     also, vox=solo or vox=harmonies
+   - platform: 2 360, 3 ps3, 4 wii
+   - read all overall lists for all platforms:
+     http://rockband.scorehero.com/rankings.php?game=9&platform=2&size=1&team=0&group=28&diff=4&vox=solo&page=0
+     rb3 on-disc: song=
+     blitz: song=-195
+     dlc: song=-250
+   - to calculate percentage, get song top scores from:
+     http://rockband.scorehero.com/top_scores.php?game=9&platform=2&size=1&group=28&diff=4&vox=solo
+   - platforms and instruments as above
+   - from these lists, calculate our rank
+   - generate fancy image (insert logo based on instrument)
 */
 
 /* dubious assumption: webpage doesn't exceed BUF bytes */
@@ -99,6 +102,19 @@ void getscores(char *userid,char *platform,char *instrument) {
 	loadwebpage(url);
 }
 
+void grabtopscores(int platno,char *instrument) {
+	int instrno=-1;
+	static char url[MAXSTR];
+	if(!strcmp(instrument,"prokeys")) instrno=28;
+	else if(!strcmp(instrument,"progtr")) instrno=25;
+	else if(!strcmp(instrument,"probass")) instrno=26;
+	if(instrno<0) error("instrument not supported");
+	snprintf(url,MAXSTR-1,"http://rockband.scorehero.com/top_scores.php?game=9&platform=%d&size=1&group=%d&diff=4&vox=solo",platno,instrno);
+	printf("load top scores for platform %d\n",platno);
+	loadwebpage(url);
+}
+
+
 void grablist(char *instrument,int platno,int listno) {
 	static char url[MAXSTR];
 	char liststr[3][10]={"","-195","-250"};
@@ -116,17 +132,62 @@ int entry[3][8]; /* 3: each subrank (rb3, blitz, dlc)
                     6: rank score pass 3* 4* 5* GS 100% */
 int highest[3];  /* highest score for subgame */
 
+#define MAXID 13333
+int topscore[MAXID]; /* highest score for song */
+int topwhere[MAXID]; /* where the song belongs */
+
 void process(char *userid,char *platform,char *instrument) {
-	int where=-1,i,r,j;
+	int where=-1,i,r,j,k;
 	char *p=buffer,*q,*u,*v;
 	static char s[MAXSTR];
 	static char username[MAXSTR];
 	FILE *f;
 	memset(entry,0,sizeof(entry));
-	getscores(userid,platform,instrument);
 	/* warning, string parsing code ahead */
+	/* find percentage by finding top score for each song */
+	memset(topscore,0,sizeof(topscore));
+	memset(topwhere,0,sizeof(topwhere));
+	for(i=2;i<5;i++) {
+		grabtopscores(i,instrument);
+		p=buffer;
+		while((p=strstr2(p,"tr height"))) {
+			q=strstr2(p,"class=\"");
+			if(!q) error("expected class");
+			if(!strncmp(q,"headrow",7)) continue;
+			if(!strncmp(q,"tier1",5)) {
+				q=strstr2(q,">");
+				if(!q) error("expected >");
+				grabuntils(s,MAXSTR-1,q,"<(");
+				while(s[0] && s[strlen(s)-1]==' ') s[strlen(s)-1]=0;
+				if(!strcmp(s,"Warmup")) where=0;
+				else if(!strcmp(s,"Apprentice")) where=0;
+				else if(!strcmp(s,"Solid")) where=0;
+				else if(!strcmp(s,"Moderate")) where=0;
+				else if(!strcmp(s,"Challenging")) where=0;
+				else if(!strcmp(s,"Nightmare")) where=0;
+				else if(!strcmp(s,"Impossible")) where=0;
+				else if(!strcmp(s,"Rock Band Blitz Soundtrack")) where=1;
+				else if(!strcmp(s,"Downloaded Songs - Rock Band 3")) where=2;
+				else printf("section [%s] not supported, put as dlc\n",s),where=2;
+			} else if(!strncmp(q,"whitecol",8)) {
+				u=strstr2(q,"<tr height");
+				v=strstr2(q,"<span class=\"error\">NO SCORES SUBMITTED</span>");
+				if((u || v) && (!u || (v && v<u))) continue;
+				/* get song id */
+				q=strstr2(q,"song=");      if(!q) error("expected entry");
+				j=grabnumuntil(q,'&');
+				if(j<0 || j>=MAXID) error("id too high, inclease MAXID and recompile");
+				q=strstr2(q,"col\">");     if(!q) error("expected entry");
+				/* get score */
+				if(q[0]=='<') q=strstr2(q,"_blank\">");
+				k=grabnumuntil(q,'<');
+				if(topscore[j]<k) topscore[j]=k,topwhere[j]=where;
+			}
+		}
+	}
+	getscores(userid,platform,instrument);
 	/* find username */
-	p=strstr2(p,"name=\"username\" value=\"");
+	p=strstr2(buffer,"name=\"username\" value=\"");
 	grabuntil(username,MAXSTR-1,p,'\"');
 	/* find scores and stats */
 	p=buffer;
@@ -192,9 +253,11 @@ void process(char *userid,char *platform,char *instrument) {
 			q=strstr2(q,"center\">");     if(!q) break;
 			r=grabnumuntil(q,'<');
 			if(r>entry[j][1]) entry[j][0]++;
-			if(highest[j]<r) highest[j]=r;
 		}
 	}
+	/* find highest */
+	for(j=0;j<3;j++) highest[j]=0;
+	for(j=0;j<MAXID;j++) highest[topwhere[j]]+=topscore[j];
 	/* output! */
 	if(!(f=fopen("stats.txt","w"))) error("couldn't open temp file for writing");
 	fprintf(f,"%s %s\n",username,instrument);
